@@ -148,6 +148,10 @@ class Model(dict):
         sql="select * from %s where %s='?' " %(cls.__table__,cls.__pri_key__.name)
         d=db.select_one(sql,key)
         return cls(**d) if d else None
+    @classmethod
+    def find_all(cls):
+        sql="select * from %s" %(cls.__table__)
+        return db.select(sql)
     def update(self):
         sql="update %s set %s where %s=?"
         L=[]
@@ -174,6 +178,7 @@ class Model(dict):
                 if not hasattr(self,k):
                     setattr(self,k,v.default)
                 args[k]=getattr(self,k)
+        print args
         db.insert_table(self.__table__,**args)
     
     def delete(self):

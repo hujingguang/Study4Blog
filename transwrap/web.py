@@ -5,7 +5,7 @@ import time
 import re
 import urllib
 import threading
-
+import functools
 try:
     from CStringIO import StringIO
 except:
@@ -503,12 +503,12 @@ class WSGIApplication(object):
         path=func.__web_route__
         route=Route(func)
         if route.is_static:
-            if route.__web_method__=='get':
+            if route.method=='get':
                 self._get_static_route[path]=route
             else:
                 self._post_static_route[path]=route
         else:
-            if route.__web_method__=='get':
+            if route.method=='get':
                 self._dynamic_get.append(route)
             else:
                 self.dynamic_post.append(route)
@@ -523,7 +523,7 @@ class WSGIApplication(object):
 
     def add_module(self,mod):
         import types
-        m=mod if type(mod)==types.ModuleType else add_module(mod)
+        m=mod if type(mod)==types.ModuleType else load_module(mod)
         for k in dir(m):
             attr=getattr(m,k)
             if callable(attr) and hasattr(attr,'__web_route__') and hasattr(attr,'__web_method__'):
@@ -559,11 +559,11 @@ class WSGIApplication(object):
                         return fn(*args)
                 raise nofound()
             raise badrequest()
-        fexec=build_intercept_chain(fn_route,*self.intercept)
+        fexec=build_intercept_chain(fn_route,*self._intercept)
 
         def wsgi(env,start_response):
             request=ctx.request=env
-            response=ctx.response=Respone()
+            response=ctx.response=Response()
             ctx.application=_application
             try:
                 t=fexec()
@@ -573,6 +573,8 @@ class WSGIApplication(object):
                     t=[]
                 if isinstance(t,unicode):
                     t=t.encode('utf-8')
+                    print '--------'
+                    print response.status
                 start_response(response.status,response.headers)
                 return t
             except HttpError,e:

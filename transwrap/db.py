@@ -45,7 +45,7 @@ def connection():
 
 
 def with_connection(func):
-    functools.wraps(func)
+    @functools.wraps(func)
     def wrapper(*args,**kw):
         with _Connectionctx():
             return func(*args,**kw)
@@ -93,7 +93,7 @@ def transaction():
     return _Transaction()
 
 def with_transaction(func):
-    functools.wraps(func)
+    @functools.wraps(func)
     def wrapper(*args,**kw):
         with _Transaction():
             return func(*args,**kw)
@@ -105,10 +105,10 @@ def _select(sql,first,*args):
     global _dbctx
     cursor=None
     sql=sql.replace('?','%s')
-    sql=sql %(args)
+    #sql=sql %(args)
     try:
         cursor=_dbctx.connection.getcursor()
-        cursor.execute(sql)
+        cursor.execute(sql,args)
         if cursor.description:
             names=[x[0] for x in cursor.description]
         if first:
@@ -123,10 +123,10 @@ def _select(sql,first,*args):
 
 def _select_int(sql,*args):
     global _dbctx
-    d=_select(sql,*args)
+    d=_select(sql,True,*args)
     if len(d) != 1:
         raise "Outof Border"
-    return d.values[0]
+    return d.values()[0]
 
 
 def select_one(sql,*args):
@@ -136,17 +136,18 @@ def select(sql,*args):
     return _select(sql,False,*args)
 
 def select_int(sql,*args):
-    return _selet_int(sql,*args)
+    return _select_int(sql,*args)
 
 @with_connection
 def _update(sql,*args):
     global _dbctx
     cursor=None
-    sql=sql.replace('?','"%s"')
-    sql=sql %args
+    sql=sql.replace('?','%s')
+    #sql=sql %args
+    print sql
     try:
         cursor=_dbctx.connection.getcursor()
-        cursor.execute(sql)
+        cursor.execute(sql,args)
         r=cursor.rowcount
         if _dbctx.transaction == 0:
             _dbctx.connection.commit()
@@ -159,9 +160,7 @@ def insert_table(table,**kw):
     sql="insert into %s (%s) values(%s)"
     names,args=zip(*kw.iteritems())
     names=','.join(names)
-    print names
     values=','.join(['?' for i in range(0,len(args))])
-    print values
     sql=sql %(table,names,values)
     return _update(sql,*args)
 
@@ -238,7 +237,10 @@ def create_engine(user,password,database,host,port,**args):
 if __name__=='__main__':
     create_engine('hu', 'hu', 'hu','127.0.0.1',3306)
     with connection():
-        insert('user',**dict(id=119988810,name='Joy',email='ww@wikiki.cn',last_modified=time.time(),passwd='123123'))
+        print select_int('select count(*) from xixi')
+        print select_one('select * from xixi')
+        #update('create table xixi (id int(100),name varchar(50) ,email varchar(50),last_modified varchar(50),passwd varchar(50))' )
+        #insert_table('xixi',**dict(id=9988810,name='Doy',email='ww@kiki.cn',last_modified=time.time(),passwd='123123'))
         #print select('select ?,? from user where name="?"','id','name','Joy')
         #update('delete from user where id=?',1)
         #print hex(id(_dbctx.connection))
