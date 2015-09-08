@@ -194,32 +194,3 @@ if __name__ == '__main__':
      print _gen_sql(table_name,maps)
 
         
-
-
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

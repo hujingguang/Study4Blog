@@ -163,10 +163,6 @@ def insert_table(table,**kw):
     values=','.join(['?' for i in range(0,len(args))])
     print values
     sql=sql %(table,names,values)
-    print '---------------'
-    print sql
-    print '---------------'
-    #_update(sql)
     return _update(sql,*args)
 
 def update(sql,*args):

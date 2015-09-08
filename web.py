@@ -4,7 +4,7 @@ import datetime
 import time
 import re
 import urllib
-
+import threading
 
 try:
     from CStringIO import StringIO
@@ -23,7 +23,7 @@ class Dict(dict):
     def __setattr__(self,name,value):
         self[name]=value
 
-
+ctx=threading.local()
 
 _RE_TZ_=re.compile(r'^([\+\-])([0-9]{1,2})\:([0-9]{1,2})$')
 
@@ -421,7 +421,7 @@ class TemplateEngine(object):
 
 class Jinja2TemplateEngine(TemplateEngine):
     def __init__(self,temp_dir,**args):
-        from Jinja2 import FileSystemLoader,Environment
+        from jinja2 import FileSystemLoader,Environment
         if not 'autoescape' in args:
             args['autoescape']=True
         self._env=Environment(loader=FileSystemLoader(temp_dir),**args)
@@ -462,7 +462,7 @@ def intercept(path):
 
 def build_intercept(fn,next):
     def wrapper():
-        if fn.__intercept(ctx.request.path_info):
+        if fn.__intercept__(ctx.request.path_info):
             return fn(next)
         else:
             return next()
@@ -475,6 +475,133 @@ def build_intercept_chain(target,*intercept_list):
     for f in L:
         fn=build_intercept(f,fn)
     return fn
+
+def load_module(module_name):
+    m=module_name.rfind('.')
+    if m== (-1):
+        return __import__(module_name)
+    from_module=module_name[:m]
+    import_module=module_name[m+1:]
+    attr=__import__(from_module,globals(),locals(),[import_module])
+    return getattr(attr,import_module)
+
+
+class WSGIApplication(object):
+    def __init__(self,document_root=None):
+        self.document_root=document_root
+        self._get_static_route={}
+        self._post_static_route={}
+        self._dynamic_get=[]
+        self._dynamic_post=[]
+        self._intercept=[]
+        self.engine=None
+    
+    def add_intercept(self,func):
+        self._intercept.append(func)
+
+    def add_urls(self,func):
+        path=func.__web_route__
+        route=Route(func)
+        if route.is_static:
+            if route.__web_method__=='get':
+                self._get_static_route[path]=route
+            else:
+                self._post_static_route[path]=route
+        else:
+            if route.__web_method__=='get':
+                self._dynamic_get.append(route)
+            else:
+                self.dynamic_post.append(route)
+    @property
+    def template_engine(self):
+        return self.engine
+
+    @template_engine.setter
+    def template_engine(self,engine):
+        self.engine=engine
+
+
+    def add_module(self,mod):
+        import types
+        m=mod if type(mod)==types.ModuleType else add_module(mod)
+        for k in dir(m):
+            attr=getattr(m,k)
+            if callable(attr) and hasattr(attr,'__web_route__') and hasattr(attr,'__web_method__'):
+                self.add_urls(attr)
+
+    def run(self,host,port):
+        from wsgiref.simple_server import make_server
+        s=make_server(host,port,self.get_wsgi_application())
+        s.serve_forever()
+
+    def get_wsgi_application(self):
+        _application=Dict(document_root=self.document_root)
+
+        def fn_route():
+            path_info=ctx.request.path_info
+            method=ctx.request.request_method
+            if method=='GET':
+                if path_info in self._get_static_route:
+                    fn=self._get_static_route[path_info]
+                    return fn()
+                for fn in self._dynamic_get:
+                    args=fn.match(path_info)
+                    if args:
+                        return fn(*args)
+                raise nofound()
+            if method=='POST':
+                fn=self._get_post_route.get(path_info,None)
+                if fn:
+                    return fn()
+                for fn in self._dynamic_post:
+                    args=k.match(path_info)
+                    if args:
+                        return fn(*args)
+                raise nofound()
+            raise badrequest()
+        fexec=build_intercept_chain(fn_route,*self.intercept)
+
+        def wsgi(env,start_response):
+            request=ctx.request=env
+            response=ctx.response=Respone()
+            ctx.application=_application
+            try:
+                t=fexec()
+                if isinstance(t,Template):
+                    t=self.engine(t.template_name,t.model)
+                if t is None:
+                    t=[]
+                if isinstance(t,unicode):
+                    t=t.encode('utf-8')
+                start_response(response.status,response.headers)
+                return t
+            except HttpError,e:
+                start_response(e.status,response.headers)
+                return ['<html><body>',e.status,'<body></html>']
+            except RedirectError,e:
+                response.set_header('Location',e.location)
+                start_response(e.status,response.headers)
+                return []
+            except Exception,e:
+                start_response('500 internal server error',[])
+                return ['<html><body>500 internal server error']
+            finally:
+                del ctx.response
+                del ctx.application
+                del ctx.request
+        return wsgi
+
+        
+
+
+
+
+
+
+
+
+
+
 
 
 
